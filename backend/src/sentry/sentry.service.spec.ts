@@ -59,6 +59,18 @@ describe('SentryService', () => {
       expect(service.isInitialized()).toBe(true);
     });
 
+    it('scrubs signatures from breadcrumbs as they are recorded (#933)', () => {
+      process.env.SENTRY_DSN = 'https://test@sentry.io/1';
+      service.init();
+      const { beforeBreadcrumb } = (Sentry.init as jest.Mock).mock.calls[0][0];
+      const crumb = beforeBreadcrumb({
+        category: 'http',
+        data: { url: '/auth/verify?token=abc', body: { address: 'GABC', signature: 'c2lnbmVk' } },
+      });
+      expect(JSON.stringify(crumb)).not.toContain('c2lnbmVk');
+      expect(JSON.stringify(crumb)).not.toContain('token=abc');
+    });
+
     it('should use lower tracesSampleRate in production', () => {
       process.env.SENTRY_DSN = 'https://test@sentry.io/1';
       process.env.NODE_ENV = 'production';

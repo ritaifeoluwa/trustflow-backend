@@ -58,6 +58,8 @@ export class SentryService {
       // `Event` base because every field it touches lives there. Widening the parameter and
       // narrowing the return keeps the cast one-directional and reviewable.
       beforeSend: (event: Sentry.Event) => scrubEvent(event) as never,
+      // #933 — scrub each breadcrumb as it is recorded, not only when an error event is sent.
+      beforeBreadcrumb: breadcrumb => scrubBreadcrumb(breadcrumb) as Sentry.Breadcrumb,
     });
 
     this.initialized = true;

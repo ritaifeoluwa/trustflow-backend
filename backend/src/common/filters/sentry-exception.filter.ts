@@ -146,6 +146,14 @@ export class SentryExceptionFilter implements ExceptionFilter {
         delete details.message;
         delete details.error;
       }
+      // Every 429 advertises Retry-After (#948), including ones thrown outside RateLimitGuard.
+      if (
+        status === HttpStatus.TOO_MANY_REQUESTS &&
+        !response.getHeader('Retry-After') &&
+        Number.isFinite(Number(details.retryAfter))
+      ) {
+        response.setHeader('Retry-After', String(Math.max(1, Math.ceil(Number(details.retryAfter)))));
+      }
     } else {
       const knownStatus = extractKnownHttpStatus(exception);
       if (knownStatus !== undefined) {

@@ -21,6 +21,14 @@ export interface MilestoneNotificationData {
   message?: string;
 }
 
+export interface FailedNotificationDelivery {
+  channel: 'email' | 'push';
+  recipient: string;
+  subject: string;
+  error: string;
+  failedAt: string;
+}
+
 export interface DisputeNotificationData {
   escrowId: string;
   depositor: string;
@@ -40,6 +48,10 @@ export class NotificationService {
   private readonly pushApiUrl: string;
 
   private preferences = new Map<string, NotificationPreference>();
+
+  /** Dead-letter record of deliveries that failed after retries (#931), newest last. */
+  private readonly failedDeliveries: FailedNotificationDelivery[] = [];
+  private static readonly MAX_FAILED_DELIVERIES = 1000;
 
   constructor() {
     this.resendApiKey = process.env.RESEND_API_KEY || '';
@@ -183,6 +195,7 @@ export class NotificationService {
       return true;
     } catch (error) {
       this.logger.error(`Failed to send email to ${to}: ${error instanceof Error ? error.message : String(error)}`);
+      this.recordFailedDelivery('email', to, subject, error);
       return false;
     }
   }
@@ -224,8 +237,34 @@ export class NotificationService {
       return true;
     } catch (error) {
       this.logger.error(`Failed to send push notification to ${address}: ${error instanceof Error ? error.message : String(error)}`);
+      this.recordFailedDelivery('push', address, title, error);
       return false;
     }
+  }
+
+  /** Returns notifications whose delivery failed after retries (#931). */
+  getFailedDeliveries(): FailedNotificationDelivery[] {
+    return [...this.failedDeliveries];
+  }
+
+  private recordFailedDelivery(
+    channel: FailedNotificationDelivery['channel'],
+    recipient: string,
+    subject: string,
+    error: unknown,
+  ): void {
+    const entry: FailedNotificationDelivery = {
+      channel,
+      recipient,
+      subject,
+      error: error instanceof Error ? error.message : String(error),
+      failedAt: new Date().toISOString(),
+    };
+    this.failedDeliveries.push(entry);
+    if (this.failedDeliveries.length > NotificationService.MAX_FAILED_DELIVERIES) {
+      this.failedDeliveries.shift();
+    }
+    this.logger.warn(`Notification dead-lettered: ${JSON.stringify(entry)}`);
   }
 
   /**

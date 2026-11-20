@@ -226,5 +226,23 @@ describe('NotificationService', () => {
       expect(result).toBe(false);
       expect(spy).toHaveBeenCalledTimes(1);
     });
+
+    it('records a dead-letter entry when a delivery ultimately fails (#931)', async () => {
+      const svc = new NotificationService();
+      jest
+        .spyOn(svc as any, 'sendResendRequest')
+        .mockRejectedValue(new Error('HTTP 404: Resend API returned: not found'));
+
+      await (svc as any).sendEmail('user@example.com', 'subject', '<p>body</p>');
+
+      expect(svc.getFailedDeliveries()).toEqual([
+        expect.objectContaining({
+          channel: 'email',
+          recipient: 'user@example.com',
+          subject: 'subject',
+          error: 'HTTP 404: Resend API returned: not found',
+        }),
+      ]);
+    });
   });
 });
